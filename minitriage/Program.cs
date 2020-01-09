@@ -24,7 +24,7 @@ namespace minitriage
         string strFTPServer = null;
         string strFTPUser = null; // Consider this to be public info
         string strFTPPassword = null; // This should be considered open info. Security depends on the assymetric encryption of the files.
-        string strDirectory = @"c:\quarantine";
+        List <string> strDirectory = new List<string>();
         List<string> strCommands = new List<string>();
 
         string strTempOutputPath = null;
@@ -68,7 +68,8 @@ namespace minitriage
 
             // Initialize settings from the settings.txt-file.
         bool initSettings()
-        {
+        {          
+
             if (strTempOutputPath == null)
             {
                 this.strTempOutputPath = getFolderCopyDirectory(); // Set the temporary folder for creating files and the log files.
@@ -115,7 +116,7 @@ namespace minitriage
                     }
                     else if (strKey == "strDirectory")
                     {
-                        strDirectory = strValue;
+                        strDirectory.Add(strValue);
                     }
                     else if (strKey == "strCommand")
                     {
@@ -195,42 +196,74 @@ namespace minitriage
             }
         }
 
+        void copyFilesRecursively(string strBaseFolder, string strFolder)
+        {
+            string[] strFile = Directory.GetFiles(strFolder);
+
+            string strStartPath = $"{strTempOutputPath}{Path.DirectorySeparatorChar}";
+
+            if (strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
+            {
+                string strExtra = strFolder.Substring(strBaseFolder.Length+1);
+
+                strStartPath = strStartPath + strExtra;
+
+                if(!Directory.Exists(strStartPath))
+                {
+                    Directory.CreateDirectory(strStartPath);
+                }
+
+                strStartPath += Path.DirectorySeparatorChar;
+            }
+
+            foreach (string str in strFile)
+            {
+                string strFname = Path.GetFileName(str);
+                string strDir = Path.GetDirectoryName(str);
+
+                try
+                {
+                    LogWriter.writeLog("[+] copy file" + strFname);
+                    File.Copy($"{strDir}{Path.DirectorySeparatorChar}{strFname}", $"{strStartPath}{strFname}");
+                }
+                catch (Exception ex2)
+                {
+                    LogWriter.writeLog("[-] Error: could not copy file" + strFname + ":" + ex2.Message);
+                }
+            }
+
+            string[] strDirectories = Directory.GetDirectories(strFolder);
+
+            foreach(string strDir in strDirectories)
+            {
+                copyFilesRecursively(strBaseFolder, strDir);
+            }
+
+        }
+
         void fetchQuarantine()
         {
             var bts2 = System.Convert.FromBase64String(strPublicKey);
             string strOutput = Path.GetTempFileName();
             string strEncryptedFile = Path.GetTempFileName();
 
+            if (strDirectory.Count < 1) strDirectory.Add(@"c:\quarantine");
 
-            if(this.strTempOutputPath != null)
+            if (this.strTempOutputPath != null)
             {
-                LogWriter.writeLog($"[+] Copying all files from  {strDirectory} to {strTempOutputPath}");
-
-                try
+                foreach (string strDirSpec in strDirectory)
                 {
-                    string[] strFile = Directory.GetFiles(strDirectory);
+                    LogWriter.writeLog($"[+] Copying all files from  {strDirSpec} to {strTempOutputPath}");
 
-                    foreach (string str in strFile)
+                    try
                     {
-                        string strFname = Path.GetFileName(str);
-                        string strDir = Path.GetDirectoryName(str);
 
-                        try
-                        {
-                            LogWriter.writeLog("[+] copy file" + strFname);
-                            File.Copy($"{strDir}{Path.DirectorySeparatorChar}{strFname}", $"{strTempOutputPath}{Path.DirectorySeparatorChar}{strFname}");
-                        }
-                        catch (Exception ex2)
-                        {
-                            LogWriter.writeLog("[-] Error: could not copy file" + strFname + ":" + ex2.Message);
-                        }
+                        copyFilesRecursively(strDirSpec, strDirSpec);
                     }
-
-                    strDirectory = strTempOutputPath;
-                }
-                catch(Exception ex3)
-                {
-                    LogWriter.writeLog("[-] Error when trying to copy files. Reverting to copying directly from folder: " + ex3.Message);
+                    catch (Exception ex3)
+                    {
+                        LogWriter.writeLog("[-] Error when trying to copy files. Reverting to copying directly from folder: " + ex3.Message);
+                    }
                 }
             }
             
@@ -241,7 +274,7 @@ namespace minitriage
             LogWriter.closeLog(); // We need to close the log so that we can include the log file in the archive.
 
             // Create the zip-archive
-            System.IO.Compression.ZipFile.CreateFromDirectory(strDirectory, strOutput);
+            System.IO.Compression.ZipFile.CreateFromDirectory(strTempOutputPath, strOutput);
 
             // Create the Rijndael-object
             var rjndl = new System.Security.Cryptography.RijndaelManaged();
