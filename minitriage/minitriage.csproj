@@ -47,6 +47,7 @@
   <ItemGroup>
     <Compile Include="AppExecute.cs" />
     <Compile Include="Encryption.cs" />
+    <Compile Include="Helpers.cs" />
     <Compile Include="LogWriter.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

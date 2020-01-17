@@ -20,6 +20,70 @@ namespace minitriage
             rsa = new RSACryptoServiceProvider(cspp);
         }
 
+        public static bool encryptFile(string strEncryptedFile, string strOutput, byte [] bts2)
+        {
+            try
+            {
+
+                // Create the Rijndael-object
+                var rjndl = new System.Security.Cryptography.RijndaelManaged();
+                rjndl.KeySize = 256;
+                rjndl.BlockSize = 256;
+                rjndl.Mode = System.Security.Cryptography.CipherMode.CBC;
+
+                var cspp = new System.Security.Cryptography.CspParameters();
+                cspp.KeyContainerName = "jamescontainer";
+
+                // Import the key
+                var rsa = new System.Security.Cryptography.RSACryptoServiceProvider(cspp);
+                rsa.ImportCspBlob(bts2);
+
+                var btsEncryptedKey = rsa.Encrypt(rjndl.Key, false);
+                var btsKeylength = System.BitConverter.GetBytes(btsEncryptedKey.Length);
+                var btsIVLength = System.BitConverter.GetBytes(rjndl.IV.Length);
+
+                // Create the file where the encrypted data will be stored.
+                var fsOutput = new System.IO.FileStream(strEncryptedFile, System.IO.FileMode.Create);
+
+                // Header: [keylength][iv-length][encrypted-key][iv]
+                fsOutput.Write(btsKeylength, 0, 4);
+                fsOutput.Write(btsIVLength, 0, 4);
+                fsOutput.Write(btsEncryptedKey, 0, btsEncryptedKey.Length);
+                fsOutput.Write(rjndl.IV, 0, rjndl.IV.Length);
+
+                var outStreamEncrypted = new System.Security.Cryptography.CryptoStream(fsOutput, rjndl.CreateEncryptor(), System.Security.Cryptography.CryptoStreamMode.Write);
+
+                // Write to stream
+                var count = 0;
+                var blockSizeBytes = (rjndl.BlockSize / 8);
+                var data = new byte[blockSizeBytes];
+
+                // Open the zip-file previously created from the contents of the quarantine folder
+                var fsZipFile = new System.IO.FileStream(strOutput, System.IO.FileMode.Open);
+
+                do
+                {
+                    count = fsZipFile.Read(data, 0, blockSizeBytes);
+                    outStreamEncrypted.Write(data, 0, count);
+                }
+                while (count > 0);
+
+                //// Cleanup
+                fsZipFile.Close();
+                outStreamEncrypted.FlushFinalBlock();
+                outStreamEncrypted.Close();
+                fsOutput.Close();
+
+                return true;
+            }
+            catch(Exception ex)
+            {
+                LogWriter.writeLog("[-] Error in encryptFile() " + ex.Message);
+            }
+
+            return false;
+        }
+
         public void decryptFile(string strInput, string strOutput)
         {
             RijndaelManaged rjndl = new RijndaelManaged();

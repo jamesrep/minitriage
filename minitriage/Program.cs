@@ -26,47 +26,11 @@ namespace minitriage
         string strFTPPassword = null; // This should be considered open info. Security depends on the assymetric encryption of the files.
         List <string> strDirectory = new List<string>();
         List<string> strCommands = new List<string>();
+        List<string> strIncludeOnlyFiletypes = new List<string>(); // The file types which should be included. If empty then all are copied.
 
         string strTempOutputPath = null;
 
-        static List <string> parseCommand(string strCommand)
-        {
-            List<string> lstRetval = new List<string>();
-
-            if(strCommand.IndexOf('"') == 0)
-            {
-                string strSub = strCommand.Substring(1);
-
-                int pos = strSub.IndexOf('"');
-
-                string strExe = strSub.Substring(0, pos);
-                string strArguments = strSub.Substring(pos + 1);
-
-                lstRetval.Add(strExe);
-                lstRetval.Add(strArguments);
-            }
-            else if(strCommand.IndexOf(' ') > 0)
-            {
-                int pos = strCommand.IndexOf(' ');
-
-                string strExe = strCommand.Substring(0, pos);
-                string strArguments = strCommand.Substring(pos + 1);
-
-                lstRetval.Add(strExe);
-                lstRetval.Add(strArguments);
-            }
-            else
-            {
-                lstRetval.Add(strCommand);
-            }
-
-            lstRetval[0] = lstRetval[0].Replace("@base@", Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location));
-
-            return lstRetval;
-        }
-        
-
-            // Initialize settings from the settings.txt-file.
+        // Initialize settings from the settings.txt-file.
         bool initSettings()
         {          
 
@@ -89,7 +53,7 @@ namespace minitriage
 
             foreach(string str in strAll)
             {
-                if (str.IndexOf('#') == 0) continue;
+                if (str.IndexOf('#') == 0) continue; // Remove comment-lines
 
                 Match m = Regex.Match(str, @"^(?<key>[A-z]{1,})\=(?<value>.+)");
 
@@ -122,27 +86,18 @@ namespace minitriage
                     {
                         this.strCommands.Add(strValue);
                     }
+                    else if (strKey == "strFileType")
+                    {
+                        LogWriter.writeLog($"[+] Includes the {strValue} file type.");
+                        this.strIncludeOnlyFiletypes.Add(strValue);
+                    }
                 }
             }
 
             return true;
         }
 
-        static void deleteFile(string strFile)
-        {
-            try
-            {
 
-                if (File.Exists(strFile))
-                {
-                    File.Delete(strFile);
-                }
-            }
-            catch(Exception ex)
-            {
-                LogWriter.writeLog("[-] Error when deleting file: " + ex.Message);
-            }
-        }
 
         static string getFolderCopyDirectory()
         {
@@ -181,7 +136,7 @@ namespace minitriage
         {
             for(int i=0; i < strCommands.Count; i++)
             {
-                List<string> lstCommand = parseCommand(strCommands[i]);
+                List<string> lstCommand = Helpers.parseCommand(strCommands[i]);
 
                 Random rnd = new Random();
                 string strOutFile = Path.GetFileNameWithoutExtension(lstCommand[0]) + "_"+ rnd.Next();
@@ -196,13 +151,15 @@ namespace minitriage
             }
         }
 
-        void copyFilesRecursively(string strBaseFolder, string strFolder)
+
+        void copyFilesRecursively(string strBaseFolder, string strFolder, bool bStartPathCheck=true)
         {
             string[] strFile = Directory.GetFiles(strFolder);
 
             string strStartPath = $"{strTempOutputPath}{Path.DirectorySeparatorChar}";
 
-            if (strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
+            // If folder does not exist then we create it.
+            if (bStartPathCheck && strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
             {
                 string strExtra = strFolder.Substring(strBaseFolder.Length+1);
 
@@ -220,11 +177,31 @@ namespace minitriage
             {
                 string strFname = Path.GetFileName(str);
                 string strDir = Path.GetDirectoryName(str);
+                string strExtension = Path.GetExtension(str).ToLower();
 
                 try
                 {
-                    LogWriter.writeLog("[+] copy file" + strFname);
-                    File.Copy($"{strDir}{Path.DirectorySeparatorChar}{strFname}", $"{strStartPath}{strFname}");
+                    string strFileToCopy = $"{strDir}{Path.DirectorySeparatorChar}{strFname}";
+                    string strDestinationFile = $"{strStartPath}{strFname}";
+
+                    LogWriter.writeLog($"[+] Copying file {strFileToCopy} to {strDestinationFile}");
+
+                    if (this.strIncludeOnlyFiletypes.Count > 0)
+                    {
+                        if(strExtension == ".zip")
+                        {
+                            Helpers.deleteInsideZipNotMatching(strFileToCopy, strIncludeOnlyFiletypes);
+                            File.Copy(strFileToCopy, strDestinationFile);
+                        }
+                        else if(strIncludeOnlyFiletypes.Contains(strExtension))
+                        {
+                            File.Copy(strFileToCopy, strDestinationFile);
+                        }
+                    }
+                    else
+                    {
+                        File.Copy(strFileToCopy, strDestinationFile);
+                    }
                 }
                 catch (Exception ex2)
                 {
@@ -266,66 +243,24 @@ namespace minitriage
                     }
                 }
             }
-            
 
-            deleteFile(strEncryptedFile);
-            deleteFile(strOutput);
+
+            Helpers.deleteFile(strEncryptedFile);
+            Helpers.deleteFile(strOutput);
 
             LogWriter.closeLog(); // We need to close the log so that we can include the log file in the archive.
 
             // Create the zip-archive
             System.IO.Compression.ZipFile.CreateFromDirectory(strTempOutputPath, strOutput);
 
-            // Create the Rijndael-object
-            var rjndl = new System.Security.Cryptography.RijndaelManaged();
-            rjndl.KeySize = 256;
-            rjndl.BlockSize = 256;
-            rjndl.Mode = System.Security.Cryptography.CipherMode.CBC;
-
-            var cspp = new System.Security.Cryptography.CspParameters();
-            cspp.KeyContainerName = "jamescontainer";
-
-            // Import the key
-            var rsa = new System.Security.Cryptography.RSACryptoServiceProvider(cspp);            
-            rsa.ImportCspBlob(bts2);
-
-            var btsEncryptedKey = rsa.Encrypt(rjndl.Key, false);            
-            var btsKeylength = System.BitConverter.GetBytes(btsEncryptedKey.Length);            
-            var btsIVLength = System.BitConverter.GetBytes(rjndl.IV.Length);
-
-            // Create the file where the encrypted data will be stored.
-            var fsOutput = new System.IO.FileStream(strEncryptedFile, System.IO.FileMode.Create);
-			
-			// Header: [keylength][iv-length][encrypted-key][iv]
-            fsOutput.Write(btsKeylength, 0, 4);
-            fsOutput.Write(btsIVLength, 0, 4);
-            fsOutput.Write(btsEncryptedKey, 0, btsEncryptedKey.Length);
-            fsOutput.Write(rjndl.IV, 0, rjndl.IV.Length);
-
-            var outStreamEncrypted = new System.Security.Cryptography.CryptoStream(fsOutput, rjndl.CreateEncryptor(), System.Security.Cryptography.CryptoStreamMode.Write);
-
-            // Write to stream
-            var count = 0;
-            var blockSizeBytes = (rjndl.BlockSize / 8);
-            var data = new byte[blockSizeBytes];
-            
-            // Open the zip-file previously created from the contents of the quarantine folder
-            var fsZipFile = new System.IO.FileStream(strOutput, System.IO.FileMode.Open);
-            
-            do
+            // Encrypt the zip-archive
+            if(!Encryption.encryptFile(strEncryptedFile, strOutput, bts2))
             {
-                count = fsZipFile.Read(data, 0, blockSizeBytes);
-                outStreamEncrypted.Write(data, 0, count);                
+                LogWriter.writeLog("[-] Error when encrypting file");
+                return;
             }
-            while (count > 0);
-
-            //// Cleanup
-            fsZipFile.Close();
-            outStreamEncrypted.FlushFinalBlock();
-            outStreamEncrypted.Close();
-            fsOutput.Close();
-
-            deleteFile(strOutput);
+ 
+            Helpers.deleteFile(strOutput); // Delete the temporary file
 
             //// Send the encrypted file
             try
@@ -338,7 +273,7 @@ namespace minitriage
                 LogWriter.writeLog($"[-] Error when trying to upload file: {exFTP.Message}");
             }
 
-            deleteFile(strEncryptedFile);
+            Helpers.deleteFile(strEncryptedFile);
 
             //// Cleanup
             LogWriter.writeLog("[+] All done!");
@@ -373,7 +308,7 @@ namespace minitriage
         {
             string strTempOut = Program.getFolderCopyDirectory();
             LogWriter.strTempDirectory = strTempOut;
-            LogWriter.writeLog("[+] MiniTriage v0.2 - James Dickson 2020");
+            LogWriter.writeLog("[+] MiniTriage v0.3 - James Dickson 2020");
 
             
             for (int i = 0; i < args.Length; i++)
