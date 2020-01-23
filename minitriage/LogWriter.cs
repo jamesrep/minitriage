@@ -54,20 +54,20 @@ namespace minitriage
                     {
                         Random rnd = new Random();
 
-                        fsOut = new FileStream($"{strDir}\\{DateTime.Now.ToString("yyyyMMdd_HHmmss")}_{rnd.Next()}.txt", FileMode.OpenOrCreate);
+                        fsOut = new FileStream(strDir + "\\" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + rnd.Next() + ".txt", FileMode.OpenOrCreate);
                         swOut = new StreamWriter(fsOut);
                     }
                 }
 
                 if (swOut != null)
                 {
-                    swOut.WriteLine($"{DateTime.Now.ToString("yyyyMMddHHmmss")}:{strLog}");
+                    swOut.WriteLine(DateTime.Now.ToString("yyyyMMddHHmmss") + ":" + strLog);
                     swOut.Flush();
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error on log:{ex.Message}");
+                Console.WriteLine("Error on log: " + ex.Message);
             }
         }
     }

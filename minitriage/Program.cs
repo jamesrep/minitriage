@@ -45,7 +45,7 @@ namespace minitriage
 
             if(!File.Exists(strSettingsFile))
             {
-                LogWriter.writeLog($"[-] Error: Settings file does not exist! {strSettingsFile}");
+                LogWriter.writeLog("[-] Error: Settings file does not exist! " + strSettingsFile);
                 return false;
             }
 
@@ -88,7 +88,7 @@ namespace minitriage
                     }
                     else if (strKey == "strFileType")
                     {
-                        LogWriter.writeLog($"[+] Includes the {strValue} file type.");
+                        LogWriter.writeLog("[+] Includes the " + strValue + " file type.");
                         this.strIncludeOnlyFiletypes.Add(strValue);
                     }
                 }
@@ -156,7 +156,7 @@ namespace minitriage
         {
             string[] strFile = Directory.GetFiles(strFolder);
 
-            string strStartPath = $"{strTempOutputPath}{Path.DirectorySeparatorChar}";
+            string strStartPath = strTempOutputPath+Path.DirectorySeparatorChar;
 
             // If folder does not exist then we create it.
             if (bStartPathCheck && strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
@@ -181,10 +181,10 @@ namespace minitriage
 
                 try
                 {
-                    string strFileToCopy = $"{strDir}{Path.DirectorySeparatorChar}{strFname}";
-                    string strDestinationFile = $"{strStartPath}{strFname}";
+                    string strFileToCopy = string.Format("{0}{1}{2}",strDir,Path.DirectorySeparatorChar,strFname);
+                    string strDestinationFile = string.Format("{0}{1}",strStartPath,strFname);
 
-                    LogWriter.writeLog($"[+] Copying file {strFileToCopy} to {strDestinationFile}");
+                    LogWriter.writeLog("[+] Copying file " + strFileToCopy + " to " + strDestinationFile);
 
                     if (this.strIncludeOnlyFiletypes.Count > 0)
                     {
@@ -230,7 +230,7 @@ namespace minitriage
             {
                 foreach (string strDirSpec in strDirectory)
                 {
-                    LogWriter.writeLog($"[+] Copying all files from  {strDirSpec} to {strTempOutputPath}");
+                    LogWriter.writeLog("[+] Copying all files from  " + strDirSpec + " to "+ strTempOutputPath);
 
                     try
                     {
@@ -270,7 +270,7 @@ namespace minitriage
             }
             catch(Exception exFTP)
             {
-                LogWriter.writeLog($"[-] Error when trying to upload file: {exFTP.Message}");
+                LogWriter.writeLog("[-] Error when trying to upload file: " + exFTP.Message);
             }
 
             Helpers.deleteFile(strEncryptedFile);
@@ -284,7 +284,7 @@ namespace minitriage
         {
             
             string strDate = DateTime.Now.ToString("yyyyddMMhhMMss");
-            System.Net.FtpWebRequest ftp = (System.Net.FtpWebRequest)System.Net.FtpWebRequest.Create($"{strFTPServer}/{strDate}-file.bin");
+            System.Net.FtpWebRequest ftp = (System.Net.FtpWebRequest)System.Net.FtpWebRequest.Create(strFTPServer + "/" + strDate + "-file.bin");
             ftp.Method = System.Net.WebRequestMethods.Ftp.UploadFile;
             ftp.Credentials = new System.Net.NetworkCredential(strFTPUser, strFTPPassword);
 
