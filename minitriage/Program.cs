@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -149,6 +150,47 @@ namespace minitriage
 
 
             }
+        }
+
+        void listProcesses()
+        {
+            Process [] processes = System.Diagnostics.Process.GetProcesses();
+            string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + "allprocesses.txt";
+            StringBuilder sb = new StringBuilder();
+
+            foreach (Process p in processes)
+            {
+
+                try
+                {
+                    if (p.MainModule != null)
+                    {
+                        string strFileName = p.MainModule.FileName;
+
+                        if (strFileName != null && File.Exists(strFileName))
+                        {
+                            string strMd5 = null;
+
+                            using (var md5 = MD5.Create())
+                            {
+                                using (var stream = File.OpenRead(strFileName))
+                                {
+                                    byte[] bts = md5.ComputeHash(stream);
+                                    strMd5 = BitConverter.ToString(bts).Replace("-", "").ToLowerInvariant();
+
+                                    sb.Append(strFileName + ":" + strMd5 + "\r\n");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch(Exception ex1)// This can happen on access denied etc.
+                {
+                    Console.WriteLine(ex1.GetType().ToString() + ":" + ex1.Message);
+                }
+            }
+
+            File.WriteAllText(strOut, sb.ToString());
         }
 
 
@@ -362,6 +404,16 @@ namespace minitriage
 
                     try
                     {
+                        LogWriter.writeLog("[+] Listing processes..");
+                        p.listProcesses();
+                    }
+                    catch (Exception ex4)
+                    {
+                        LogWriter.writeLog(ex4.Message);
+                    }
+
+                    try
+                    {
                         LogWriter.writeLog("[+] Fetching quarantine and sending logs...");
                         p.fetchQuarantine();
                     }
@@ -369,6 +421,10 @@ namespace minitriage
                     {
                         LogWriter.writeLog(ex3.Message);
                     }
+
+
+
+
 
                     LogWriter.closeLog();
                     p.cleanTempFolders();
