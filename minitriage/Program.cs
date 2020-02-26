@@ -190,8 +190,9 @@ namespace minitriage
                     {
                         if(strExtension == ".zip")
                         {
-                            Helpers.deleteInsideZipNotMatching(strFileToCopy, strIncludeOnlyFiletypes);
+                            // 2020-02-26 - switched these two lines... yes bad bug, bad bug.
                             File.Copy(strFileToCopy, strDestinationFile);
+                            Helpers.deleteInsideZipNotMatching(strDestinationFile, strIncludeOnlyFiletypes);
                         }
                         else if(strIncludeOnlyFiletypes.Contains(strExtension))
                         {
