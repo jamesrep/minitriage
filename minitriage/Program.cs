@@ -133,39 +133,46 @@ namespace minitriage
             }
         }
 
+        string getArgumentString(string strArgs)
+        {
+            return Regex.Replace(strArgs, "[^A-z|0-9|.|\\-]", "_");
+        }
+
         void executeCommands()
         {
             for(int i=0; i < strCommands.Count; i++)
-            {
+            {                
                 List<string> lstCommand = Helpers.parseCommand(strCommands[i]);
 
+                string strParsedArguments = (lstCommand.Count > 1) ? lstCommand[1] : "";
+                strParsedArguments = getArgumentString(strParsedArguments);
+
                 Random rnd = new Random();
-                string strOutFile = Path.GetFileNameWithoutExtension(lstCommand[0]) + "_"+ rnd.Next();
+                string strOutFile = Path.GetFileNameWithoutExtension(lstCommand[0]) + "_"+ strParsedArguments + "_" + rnd.Next();
                 string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + strOutFile + ".txt";
 
                 AppExecute app = new AppExecute();
                 string strReturned = app.executeApp(lstCommand[0], (lstCommand.Count > 1) ? lstCommand[1] : null, this.strTempOutputPath);
 
                 File.WriteAllText(strOut, strReturned);
-
-
             }
         }
+
 
         void listProcesses()
         {
             Process [] processes = System.Diagnostics.Process.GetProcesses();
-            string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + "allprocesses.txt";
             StringBuilder sb = new StringBuilder();
 
             foreach (Process p in processes)
             {
-
                 try
                 {
                     if (p.MainModule != null)
                     {
                         string strFileName = p.MainModule.FileName;
+
+                        int parentProcess = Helpers.getParentProcess((uint)p.Id);
 
                         if (strFileName != null && File.Exists(strFileName))
                         {
@@ -178,7 +185,7 @@ namespace minitriage
                                     byte[] bts = md5.ComputeHash(stream);
                                     strMd5 = BitConverter.ToString(bts).Replace("-", "").ToLowerInvariant();
 
-                                    sb.Append(strFileName + ":" + strMd5 + "\r\n");
+                                    sb.Append(strFileName + ":" + strMd5 + ":" + p.Id + ":" + parentProcess + "\r\n");
                                 }
                             }
                         }
@@ -190,7 +197,16 @@ namespace minitriage
                 }
             }
 
-            File.WriteAllText(strOut, sb.ToString());
+            if (strTempOutputPath == null)
+            {
+                Console.WriteLine(sb.ToString());
+            }
+            else
+            {
+                string strBits = (Environment.Is64BitProcess) ? "64" : "32";
+                string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + "allprocesses" + strBits + ".txt";
+                File.WriteAllText(strOut, sb.ToString());
+            }
         }
 
 
@@ -351,7 +367,7 @@ namespace minitriage
         {
             string strTempOut = Program.getFolderCopyDirectory();
             LogWriter.strTempDirectory = strTempOut;
-            LogWriter.writeLog("[+] MiniTriage v0.3 - James Dickson 2020");
+            LogWriter.writeLog("[+] MiniTriage v0.4 - James Dickson 2020");
 
             
             for (int i = 0; i < args.Length; i++)
@@ -382,6 +398,17 @@ namespace minitriage
                     LogWriter.writeLog("[+] Done!");
                     return;
                 }
+                else if (args[i] == "--listprocesses") // minitriage --onlyprocesses
+                {
+                    LogWriter.writeLog("[+] Only executing processes-test ...");
+
+                    Program p = new Program();
+                    p.strTempOutputPath = null;
+                    p.listProcesses();
+
+                    return;
+                }
+
             }
 
             try
@@ -421,9 +448,6 @@ namespace minitriage
                     {
                         LogWriter.writeLog(ex3.Message);
                     }
-
-
-
 
 
                     LogWriter.closeLog();
