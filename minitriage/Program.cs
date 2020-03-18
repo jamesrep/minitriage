@@ -3,6 +3,7 @@
 // Uses the Rijndael-implementation from Microsoft https://docs.microsoft.com/en-us/dotnet/api/system.security.cryptography.rsacryptoserviceprovider?view=netframework-4.8
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -370,6 +371,105 @@ namespace minitriage
             ftpStream.Close();
         }
         
+        class GraphNode
+        {
+            public string strLabel;
+            public int id;
+            public int parentId;
+            public GraphNode parent;
+            public string strMD5;
+
+            public List<GraphNode> lstChildren = new List<GraphNode>();
+        }
+
+        Hashtable treeGraphDraw(string strFilename)
+        {
+            Hashtable htGraph = new Hashtable();
+
+
+            string[] strLines = File.ReadAllLines(strFilename);
+            char[] delim = new char[] { ':' };
+
+            foreach(string strLine in strLines)
+            {
+                string[] strSplitted = strLine.Split(delim);
+                int adder = 0;
+                string strVolumeLabel = string.Empty;
+
+                if(strSplitted.Length > 3)
+                {
+                    if(strSplitted.Length == 5)
+                    {
+                        adder++;
+                        strVolumeLabel = strSplitted[0] + ":"; // Bizarre consequence of bad delimiter choice.
+                    }
+                    int id = Convert.ToInt32(strSplitted[2+ adder]);
+                    int parentId = Convert.ToInt32(strSplitted[3+ adder]);
+
+                    GraphNode gnode = new GraphNode()
+                    {
+                        strLabel = strVolumeLabel + strSplitted[0+ adder],
+                        strMD5 =  strSplitted[1+ adder],
+                        id = id,
+                        parentId = parentId
+                    };
+
+                    if (htGraph.ContainsKey(parentId))
+                    {
+                        GraphNode gnParent = (GraphNode) htGraph[parentId];
+                        gnParent.lstChildren.Add(gnode);
+                        gnode.parent = gnParent;
+                    }
+                    else
+                    {
+                        
+                        List<GraphNode> lstNodesToRemove = new List<GraphNode>();
+                        
+                        // Reorganize when we get a new root-node.
+                        foreach(int childrenIds in htGraph.Keys)
+                        {
+                            GraphNode child = (GraphNode)htGraph[childrenIds];
+
+                            if (child.parentId == id)
+                            {
+                                child.parent = gnode;
+                                gnode.lstChildren.Add(child);
+                                lstNodesToRemove.Add(child);
+                            }
+                        }
+
+                        foreach(GraphNode nodeToRemove in lstNodesToRemove)
+                        {
+                            htGraph.Remove(nodeToRemove.id);
+                        }
+
+                        htGraph.Add(id, gnode);
+                    }
+                }
+            }
+
+            return htGraph;
+        }
+
+        void traverseNodes(Hashtable htGraph)
+        {
+            foreach (int key in htGraph.Keys)
+            {
+                GraphNode dNode = (GraphNode)htGraph[key];
+
+                displayNode(dNode, "");
+            }
+        }
+
+        void displayNode(GraphNode dNode, string strPrefix)
+        {
+            Console.WriteLine(strPrefix + ">" + dNode.strLabel + "(" + dNode.id + ")" + dNode.parentId);
+
+            foreach(GraphNode gn in dNode.lstChildren)
+            {
+                displayNode(gn, strPrefix + "---");
+            }
+        }
 
 
         static void Main(string[] args)
@@ -414,6 +514,17 @@ namespace minitriage
                     Program p = new Program();
                     p.strTempOutputPath = null;
                     p.listProcesses();
+
+                    return;
+                }
+                else if (args[i] == "--graph") // minitriage --onlyprocesses
+                {
+                    LogWriter.writeLog("[+] Graph...");
+
+                    Program p = new Program();
+                    Hashtable htGraph = p.treeGraphDraw(args[++i]);
+                    p.traverseNodes(htGraph);
+
 
                     return;
                 }
