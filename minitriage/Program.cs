@@ -135,26 +135,35 @@ namespace minitriage
 
         string getArgumentString(string strArgs)
         {
-            return Regex.Replace(strArgs, "[^A-z|0-9|.|\\-]", "_");
+            string strNoBackslash = strArgs.Replace("\\", "_");
+
+            return Regex.Replace(strNoBackslash, "[^A-z|^0-9|^.]", "_");
         }
 
         void executeCommands()
         {
             for(int i=0; i < strCommands.Count; i++)
-            {                
-                List<string> lstCommand = Helpers.parseCommand(strCommands[i]);
+            {
+                try
+                {
+                    List<string> lstCommand = Helpers.parseCommand(strCommands[i]);
 
-                string strParsedArguments = (lstCommand.Count > 1) ? lstCommand[1] : "";
-                strParsedArguments = getArgumentString(strParsedArguments);
+                    string strParsedArguments = (lstCommand.Count > 1) ? lstCommand[1] : "";
+                    strParsedArguments = getArgumentString(strParsedArguments);
 
-                Random rnd = new Random();
-                string strOutFile = Path.GetFileNameWithoutExtension(lstCommand[0]) + "_"+ strParsedArguments + "_" + rnd.Next();
-                string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + strOutFile + ".txt";
+                    Random rnd = new Random();
+                    string strOutFile = Path.GetFileNameWithoutExtension(lstCommand[0]) + "_" + strParsedArguments + "_" + rnd.Next();
+                    string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + strOutFile + ".txt";
 
-                AppExecute app = new AppExecute();
-                string strReturned = app.executeApp(lstCommand[0], (lstCommand.Count > 1) ? lstCommand[1] : null, this.strTempOutputPath);
+                    AppExecute app = new AppExecute();
+                    string strReturned = app.executeApp(lstCommand[0], (lstCommand.Count > 1) ? lstCommand[1] : null, this.strTempOutputPath);
 
-                File.WriteAllText(strOut, strReturned);
+                    File.WriteAllText(strOut, strReturned);
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine("[-] Error: Command could not be executed: " + strCommands[i] + ", " + ex.Message);
+                }
             }
         }
 
