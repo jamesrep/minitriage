@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -28,6 +30,7 @@ namespace minitriage
         string strFTPPassword = null; // This should be considered open info. Security depends on the assymetric encryption of the files.
         List <string> strDirectory = new List<string>();
         List<string> strCommands = new List<string>();
+        List<string> strHttpFetch = new List<string>();
         List<string> strIncludeOnlyFiletypes = new List<string>(); // The file types which should be included. If empty then all are copied.
 
         string strTempOutputPath = null;
@@ -87,6 +90,10 @@ namespace minitriage
                     else if (strKey == "strCommand")
                     {
                         this.strCommands.Add(strValue);
+                    }
+                    else if (strKey == "strHttpFetch")
+                    {
+                        this.strHttpFetch.Add(strValue);
                     }
                     else if (strKey == "strFileType")
                     {
@@ -164,6 +171,42 @@ namespace minitriage
                 catch(Exception ex)
                 {
                     Console.WriteLine("[-] Error: Command could not be executed: " + strCommands[i] + ", " + ex.Message);
+                }
+            }
+        }
+
+        void executeHttpFetch()
+        {
+            for (int i = 0; i < strHttpFetch.Count; i++)
+            {
+                try
+                {
+                    string strHttpFileName = Regex.Replace(strHttpFetch[i], "[^A-Za-z0-9 -]", "_");
+                    Random rnd = new Random();
+                    string strOutFile = "httpget_" + strHttpFileName + "_" + rnd.Next();
+                    string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + strOutFile + ".txt";
+
+                    string strBody = null;
+
+                    try
+                    {
+
+                        WebRequest request = WebRequest.Create(strHttpFetch[i]);
+                        WebResponse response = request.GetResponse();
+                        Stream dataStream = response.GetResponseStream();
+                        StreamReader reader = new StreamReader(dataStream);
+                        strBody = reader.ReadToEnd();
+                    }
+                    catch(Exception exHttp)
+                    {
+                        strBody = exHttp.StackTrace;
+                    }
+
+                    File.WriteAllText(strOut, strBody);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[-] Error: Http-request could not be executed: " + strHttpFetch[i] + ", " + ex.Message);
                 }
             }
         }
@@ -547,6 +590,16 @@ namespace minitriage
                     catch(Exception ex4)
                     {
                         LogWriter.writeLog("[-] Error when executing commands: " + ex4.StackTrace);
+                    }
+
+                    try
+                    {
+                        LogWriter.writeLog("[+] Executing http request... output to " + p.strTempOutputPath);
+                        p.executeHttpFetch();
+                    }
+                    catch (Exception ex5)
+                    {
+                        LogWriter.writeLog("[-] Error when executing httprequest: " + ex5.StackTrace);
                     }
 
                     try
