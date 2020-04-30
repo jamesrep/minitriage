@@ -31,6 +31,7 @@ namespace minitriage
         List <string> strDirectory = new List<string>();
         List<string> strCommands = new List<string>();
         List<string> strHttpFetch = new List<string>();
+        List<string> strUserKeyFetch = new List<string>();
         List<string> strIncludeOnlyFiletypes = new List<string>(); // The file types which should be included. If empty then all are copied.
 
         string strTempOutputPath = null;
@@ -94,6 +95,10 @@ namespace minitriage
                     else if (strKey == "strHttpFetch")
                     {
                         this.strHttpFetch.Add(strValue);
+                    }
+                    else if (strKey == "strUserKeyFetch")
+                    {
+                        this.strUserKeyFetch.Add(strValue);
                     }
                     else if (strKey == "strFileType")
                     {
@@ -171,6 +176,26 @@ namespace minitriage
                 catch(Exception ex)
                 {
                     Console.WriteLine("[-] Error: Command could not be executed: " + strCommands[i] + ", " + ex.Message);
+                }
+            }
+        }
+
+        void executeUserRegistryKeys()
+        {
+            for (int i = 0; i < strUserKeyFetch.Count; i++)
+            {
+                try
+                {
+                    string strUserKeyFetchFileName = Regex.Replace(strUserKeyFetch[i], "[^A-Za-z0-9 -]", "_");
+                    Random rnd = new Random();
+                    string strOutFile = "regkey_" + strUserKeyFetchFileName + "_" + rnd.Next();
+                    string strOut = this.strTempOutputPath + Path.DirectorySeparatorChar + strOutFile + ".txt";
+
+                    Helpers.printAllKeys(strOut, strUserKeyFetch[i]);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[-] Error: Http-request could not be executed: " + strHttpFetch[i] + ", " + ex.Message);
                 }
             }
         }
@@ -519,7 +544,7 @@ namespace minitriage
         {
             string strTempOut = Program.getFolderCopyDirectory();
             LogWriter.strTempDirectory = strTempOut;
-            LogWriter.writeLog("[+] MiniTriage v0.4 - James Dickson 2020");
+            LogWriter.writeLog("[+] MiniTriage v0.5 - James Dickson 2020");
 
             
             for (int i = 0; i < args.Length; i++)
@@ -600,6 +625,16 @@ namespace minitriage
                     catch (Exception ex5)
                     {
                         LogWriter.writeLog("[-] Error when executing httprequest: " + ex5.StackTrace);
+                    }
+
+                    try
+                    {
+                        LogWriter.writeLog("[+] Fetching user registry keys... output to " + p.strTempOutputPath);
+                        p.executeUserRegistryKeys();
+                    }
+                    catch (Exception ex5)
+                    {
+                        LogWriter.writeLog("[-] Error when executing user key get: " + ex5.StackTrace);
                     }
 
                     try

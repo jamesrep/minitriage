@@ -14,6 +14,7 @@ using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Permissions;
+using System.Security.Principal;
 
 namespace minitriage
 {
@@ -89,9 +90,91 @@ namespace minitriage
 
             return -1;
         }
-        
 
 
+        static bool printKeys(string strUser, StreamWriter sw, string strSubkey)
+        {
+            NTAccount account = new NTAccount(strUser);
+            SecurityIdentifier secId = (SecurityIdentifier)account.Translate(typeof(SecurityIdentifier));
+
+            if (secId == null) return false;
+
+            string strSID = secId.ToString();
+
+            Microsoft.Win32.RegistryKey regKey = Microsoft.Win32.Registry.Users;
+
+            string strRegistryKey = strSID + "\\" + strSubkey;
+
+            Console.WriteLine("[+] Opening key: " + strRegistryKey);
+
+            regKey = regKey.OpenSubKey(strRegistryKey, true);
+
+            if (regKey != null)
+            {
+                foreach (string strKey in regKey.GetSubKeyNames())
+                {
+                    LogWriter.writeLog("[+] Enumerating: " + strKey);
+
+                    sw.WriteLine(strKey);
+                }
+
+                string[] strNames = regKey.GetValueNames();
+
+                foreach (string strName in strNames)
+                {
+                    LogWriter.writeLog("[+] Name: " + strName);
+                    sw.WriteLine(strRegistryKey + ": " + strName + ": " + regKey.GetValue(strName));
+                }
+
+                return true;
+            }
+            LogWriter.writeLog("[-] Key could not be opened");
+
+            return false;
+        }
+
+
+        // We need a secure and simple way without wmi etc to get users that has logged in
+        static string[] getUsers()
+        {
+            string[] strUsers = Directory.GetDirectories("c:\\Users");
+
+            for (int i = 0; i < strUsers.Length; i++)
+            {
+                int last = strUsers[i].LastIndexOf('\\');
+
+                if (last > 0 && ((last + 1) < strUsers[i].Length))
+                {
+                    strUsers[i] = strUsers[i].Substring(last + 1);
+                }
+            }
+
+            return strUsers;
+        }
+
+        public static void printAllKeys(string strFilename, string strSubkey)
+        {
+            string[] strUsers = getUsers();
+
+            if (strUsers != null && strUsers.Length > 0)
+            {
+                using (StreamWriter sw = new StreamWriter(strFilename))
+                {
+                    foreach (string strUser in strUsers)
+                    {
+                        try
+                        {
+                            printKeys(strUser, sw, strSubkey);
+                        }
+                        catch (Exception ex1)
+                        {
+                            sw.WriteLine("[-] Could not get " + strSubkey + " for " + strUser + " :" + ex1.Message);
+                        }
+
+                    }
+                }
+            }
+        }
 
         public static void deleteInsideZipNotMatching(string strFile, List <string> lstFiles)
         {
