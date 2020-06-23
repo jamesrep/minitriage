@@ -105,7 +105,7 @@ namespace minitriage
 
             string strRegistryKey = strSID + "\\" + strSubkey;
 
-            Console.WriteLine("[+] Opening key: " + strRegistryKey);
+            LogWriter.writeLog("[+] Opening key: " + strRegistryKey);
 
             regKey = regKey.OpenSubKey(strRegistryKey, true);
 
@@ -132,6 +132,7 @@ namespace minitriage
 
             return false;
         }
+        
 
 
         // We need a secure and simple way without wmi etc to get users that has logged in

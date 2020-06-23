@@ -33,8 +33,18 @@ namespace minitriage
         List<string> strHttpFetch = new List<string>();
         List<string> strUserKeyFetch = new List<string>();
         List<string> strIncludeOnlyFiletypes = new List<string>(); // The file types which should be included. If empty then all are copied.
-
+        List<DirectoryFetcher> lstDirectoryFetcher = new List<DirectoryFetcher>(); // To be able to fetch files in folders more granularly than a global file type setting
         string strTempOutputPath = null;
+        List<string> lstGlobalAvoidDirectories = new List<string>(); // Always ignore these directories for file copy operations.
+        List<string> lstGlobalIncludeDirectories = new List<string>();
+        int fileSizeLimit = 0;
+        int maxFolderDepth = 5; // Maximum folder depth for file copy operations.
+
+        class DirectoryFetcher
+        {
+            public string strDirectoryPath;
+            public List<string> lstFileTypes = new List<string>();
+        }
 
         // Initialize settings from the settings.txt-file.
         bool initSettings()
@@ -80,6 +90,16 @@ namespace minitriage
                     {
                         strFTPUser = strValue;
                     }
+                    else if (strKey == "intFolderDepth")
+                    {
+                        LogWriter.writeLog("[+] Sets the folder depth limit to: " + strValue + " levels");
+                        this.maxFolderDepth = Convert.ToInt32(strValue);
+                    }
+                    else if (strKey == "intFileSizeLimit")
+                    {
+                        LogWriter.writeLog("[+] Sets the file size limit to: " + strValue + " bytes");
+                        this.fileSizeLimit = Convert.ToInt32( strValue);
+                    }
                     else if (strKey == "strFTPPassword")
                     {
                         strFTPPassword = strValue;
@@ -104,6 +124,33 @@ namespace minitriage
                     {
                         LogWriter.writeLog("[+] Includes the " + strValue + " file type.");
                         this.strIncludeOnlyFiletypes.Add(strValue);
+                    }
+                    else if (strKey == "strAvoidDirectory")
+                    {
+                        LogWriter.writeLog("[+] Always ignoring directory: " + strValue );
+                        this.lstGlobalAvoidDirectories.Add(strValue);
+                    }
+                    else if (strKey == "strIncludeDirectory")
+                    {
+                        LogWriter.writeLog("[+] Including directory (ignoring all others): " + strValue);
+                        this.lstGlobalIncludeDirectories.Add(strValue);
+                    }
+                    else if (strKey == "strFilesInFolders")
+                    {
+                        // strFilesInFolders=c:\users|.exe|.dll
+                        LogWriter.writeLog("[+] Includes the " + strValue + " file type.");
+
+                        string[] strs = strValue.Split(new char[] { '|' });
+
+                        DirectoryFetcher dfetch = new DirectoryFetcher();
+                        dfetch.strDirectoryPath = strs[0];
+
+                        for(int i=1; i < strs.Length; i++)
+                        {
+                            dfetch.lstFileTypes.Add(strs[i]);
+                        }
+
+                        this.lstDirectoryFetcher.Add(dfetch);
                     }
                 }
             }
@@ -288,69 +335,157 @@ namespace minitriage
         }
 
 
-        void copyFilesRecursively(string strBaseFolder, string strFolder, bool bStartPathCheck=true)
+        void copyFilesRecursively(string strBaseFolder, string strFolder, List<string> lstIncludeFileTypesArg, int currentDepth,
+            bool bStartPathCheck=true)
         {
-            string[] strFile = Directory.GetFiles(strFolder);
 
-            string strStartPath = strTempOutputPath+Path.DirectorySeparatorChar;
 
-            // If folder does not exist then we create it.
-            if (bStartPathCheck && strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
+            string[] strFile = null;
+
+            if(lstGlobalAvoidDirectories.Count > 0)
             {
-                string strExtra = strFolder.Substring(strBaseFolder.Length+1);
-
-                strStartPath = strStartPath + strExtra;
-
-                if(!Directory.Exists(strStartPath))
+                foreach(string strAvoidGlobalDir in lstGlobalAvoidDirectories)
                 {
-                    Directory.CreateDirectory(strStartPath);
+                    if(strFolder.ToLower().IndexOf(strAvoidGlobalDir.ToLower()) >= 0)
+                    {
+                        return;
+                    }
                 }
-
-                strStartPath += Path.DirectorySeparatorChar;
             }
 
-            foreach (string str in strFile)
-            {
-                string strFname = Path.GetFileName(str);
-                string strDir = Path.GetDirectoryName(str);
-                string strExtension = Path.GetExtension(str).ToLower();
+            bool bShouldCopyFile = true;
 
+            if (lstGlobalIncludeDirectories.Count > 0)
+            {
+                bShouldCopyFile = false;
+
+                foreach (string strIncludeGlobalDir in lstGlobalIncludeDirectories)
+                {
+                    Match mc = Regex.Match(strFolder, strIncludeGlobalDir, RegexOptions.IgnoreCase);
+
+                    if(mc.Success)
+                    {
+                        bShouldCopyFile = true;
+                        break;
+                    }
+                }
+            }
+
+            if (bShouldCopyFile)
+            {
                 try
                 {
-                    string strFileToCopy = string.Format("{0}{1}{2}",strDir,Path.DirectorySeparatorChar,strFname);
-                    string strDestinationFile = string.Format("{0}{1}",strStartPath,strFname);
-
-                    LogWriter.writeLog("[+] Copying file " + strFileToCopy + " to " + strDestinationFile);
-
-                    if (this.strIncludeOnlyFiletypes.Count > 0)
-                    {
-                        if(strExtension == ".zip")
-                        {
-                            // 2020-02-26 - switched these two lines... yes bad bug, bad bug.
-                            File.Copy(strFileToCopy, strDestinationFile);
-                            Helpers.deleteInsideZipNotMatching(strDestinationFile, strIncludeOnlyFiletypes);
-                        }
-                        else if(strIncludeOnlyFiletypes.Contains(strExtension))
-                        {
-                            File.Copy(strFileToCopy, strDestinationFile);
-                        }
-                    }
-                    else
-                    {
-                        File.Copy(strFileToCopy, strDestinationFile);
-                    }
+                    strFile = Directory.GetFiles(strFolder);
                 }
-                catch (Exception ex2)
+                catch (System.UnauthorizedAccessException exAuthorization)
                 {
-                    LogWriter.writeLog("[-] Error: could not copy file" + strFname + ":" + ex2.Message);
+                    string str = exAuthorization.GetType().ToString();
+                    LogWriter.writeLog(str + ":" + strBaseFolder);
+                    return;
+                }
+                catch (Exception exOther)
+                {
+                    LogWriter.writeLog(exOther.StackTrace);
+                    return;
+                }
+
+
+                string strStartPath = strTempOutputPath + Path.DirectorySeparatorChar;
+
+                // If folder does not exist then we create it.
+                if (bStartPathCheck && strBaseFolder != strFolder && strFolder.Length > (strBaseFolder.Length + 1))
+                {
+                    string strExtra = strFolder.Substring(strBaseFolder.Length + 1);
+
+                    strStartPath = strStartPath + strExtra;
+
+                    if (!Directory.Exists(strStartPath))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(strStartPath);
+                        }
+                        catch (Exception dirCreateException)
+                        {
+                            LogWriter.writeLog("[-] Error: could not create directory: " + strStartPath + ", " + dirCreateException.Message);
+                            return;
+                        }
+                    }
+
+                    strStartPath += Path.DirectorySeparatorChar;
+                }
+
+                foreach (string str in strFile)
+                {
+                    string strFname = Path.GetFileName(str);
+                    string strDir = Path.GetDirectoryName(str);
+                    string strExtension = Path.GetExtension(str).ToLower();
+
+                    try
+                    {
+                        string strFileToCopy = string.Format("{0}{1}{2}", strDir, Path.DirectorySeparatorChar, strFname);
+                        string strDestinationFile = string.Format("{0}{1}", strStartPath, strFname);
+
+                        if (bShouldCopyFile) // 2020-06-23
+                        {
+                            LogWriter.writeLog("[+] Copying file " + strFileToCopy + " to " + strDestinationFile);
+
+                            if (lstIncludeFileTypesArg.Count > 0)
+                            {
+                                if (strExtension == ".zip")
+                                {
+                                    // 2020-02-26 - switched these two lines... yes bad bug, bad bug.
+                                    File.Copy(strFileToCopy, strDestinationFile);
+                                    Helpers.deleteInsideZipNotMatching(strDestinationFile, lstIncludeFileTypesArg);
+                                }
+                                else if (lstIncludeFileTypesArg.Contains(strExtension))
+                                {
+                                    FileInfo finf = new FileInfo(strFileToCopy);
+
+                                    if (finf.Length < fileSizeLimit && fileSizeLimit > 0)
+                                    {
+                                        File.Copy(strFileToCopy, strDestinationFile);
+                                    }
+                                    else
+                                    {
+                                        LogWriter.writeLog("Too big file to copy: " + strFileToCopy + ":" + finf.Length);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                File.Copy(strFileToCopy, strDestinationFile);
+                            }
+                        }
+                    }
+                    catch (Exception ex2)
+                    {
+                        LogWriter.writeLog("[-] Error: could not copy file" + strFname + ":" + ex2.Message);
+                    }
                 }
             }
 
-            string[] strDirectories = Directory.GetDirectories(strFolder);
+            string[] strDirectories = new string[] { };
 
-            foreach(string strDir in strDirectories)
+            try
             {
-                copyFilesRecursively(strBaseFolder, strDir);
+                strDirectories = Directory.GetDirectories(strFolder);
+            }
+            catch(Exception exFaildDir)
+            {
+                ;
+                return;
+            }
+
+            if (maxFolderDepth > 0 && currentDepth > maxFolderDepth)
+            {
+                //LogWriter.writeLog("[+] Max folder depth reached");
+                return;
+            }
+
+            foreach (string strDir in strDirectories)
+            {
+                copyFilesRecursively(strBaseFolder, strDir, lstIncludeFileTypesArg, currentDepth+1);
             }
 
         }
@@ -372,7 +507,7 @@ namespace minitriage
                     try
                     {
 
-                        copyFilesRecursively(strDirSpec, strDirSpec);
+                        copyFilesRecursively(strDirSpec, strDirSpec, this.strIncludeOnlyFiletypes, 0);
                     }
                     catch (Exception ex3)
                     {
@@ -539,6 +674,13 @@ namespace minitriage
             }
         }
 
+        void packFolders()
+        {
+            foreach(DirectoryFetcher dfetcher in this.lstDirectoryFetcher)
+            {
+                copyFilesRecursively(dfetcher.strDirectoryPath, dfetcher.strDirectoryPath, dfetcher.lstFileTypes, 0);
+            }
+        }
 
         static void Main(string[] args)
         {
@@ -607,6 +749,20 @@ namespace minitriage
 
                 if (p.initSettings())
                 {
+                    try
+                    {
+                        if(p.lstDirectoryFetcher.Count > 0)
+                        {
+                            LogWriter.writeLog("[+] Packing folders ");
+                            p.packFolders();
+                        }
+
+                    }
+                    catch (Exception ex4)
+                    {
+                        LogWriter.writeLog("[-] Error when packing folders: " + ex4.StackTrace);
+                    }
+
                     try
                     {
                         LogWriter.writeLog("[+] Executing commands... output to " + p.strTempOutputPath);
